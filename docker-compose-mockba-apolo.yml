@@ -22,3 +22,15 @@ services:
       - WATCHTOWER_POLL_INTERVAL=300  # Check for updates every 5 minutes
       - WATCHTOWER_LIFECYCLE_HOOKS=true  # Ensure containers restart properly after an update
       - WATCHTOWER_LABEL_ENABLE=true  # Only update containers with the `com.centurylinklabs.watchtower.enable=true` label
+
+  redis:
+    image: redis:latest
+    container_name: redis-apolo-binance
+    restart: always
+    ports:
+      - "6379:6379"  # Expose Redis on external port 6379
+    volumes:
+      - redis_data:/data  # Optional: Persist Redis data across restarts
+
+volumes:
+  redis_data:  # Define the volume for Redis data persistence    

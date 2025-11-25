@@ -8,7 +8,7 @@ from deep_translator import GoogleTranslator
 import telebot
 from telebot import types
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from db.db_ops import get_all_positions, get_bot_status, startStopBotOp
+from db.db_ops import get_bot_status, startStopBotOp
 import json
 from datetime import timedelta
 import redis
@@ -98,14 +98,12 @@ def command_list(m):
     cid = m.chat.id
     help_text = translate("Available options.", cid)
     message_button1 = translate("▶️ ⏹️  Start/Stop Bot", cid)
-    message_button2 = translate("📥 Download Trades", cid)
-    message_button3 = translate("📝  List Bot Status", cid)
+    message_button2 = translate("📝  List Bot Status", cid)
     # Define the buttons
     button1 = InlineKeyboardButton(message_button1, callback_data="SetBotStatus")
-    button2 = InlineKeyboardButton(message_button2, callback_data="DownloadTrades")
-    button3 = InlineKeyboardButton(message_button3, callback_data="ListBotStatus")
+    button2 = InlineKeyboardButton(message_button2, callback_data="ListBotStatus")
     # Create a nested list of buttons
-    buttons = [[button1], [button2], [button3]]
+    buttons = [[button1], [button2]]
     # Order the buttons in the second row
     buttons[1].sort(key=lambda btn: btn.text)
 
@@ -126,7 +124,6 @@ def callback_handler(call):
     # Define the mapping between call.data and functions
     options = {
         'List': command_list,
-        'DownloadTrades': downloadTrades,
         'SetBotStatus': SetBotStatus,
         'ListBotStatus': listBotStatus
     }
@@ -226,22 +223,6 @@ def startStopBot(m):
             startStopBotOp(gdata)
             bot.send_message(cid, translate(f"Operation to {valor} bot executed...", cid), parse_mode='Markdown', reply_markup=markup)
 
-def downloadTrades(m):
-    if m.chat.type != 'private':
-        return
-    cid = m.chat.id
-    bot.send_message(cid, translate("Preparing trades...", cid), parse_mode='Markdown')
-    trades = get_all_positions()
-    if not trades:
-        bot.send_message(cid, translate("No trades found.", cid), parse_mode='Markdown')
-        return
-    # Create CSV content
-    csv_content = "id,chat_id,symbol,side,entry_price,exit_price,quantity,notional_usd,profit_loss_usd,profit_loss_pct,entry_order_id,exit_order_id,created_at,closed_at,exchange\n"
-    for trade in trades:
-        csv_content += f"{trade['id']},{trade['chat_id']},{trade['symbol']},{trade['side']},{trade['entry_price']},{trade['exit_price']},{trade['quantity']},{trade['notional_usd']},{trade['profit_loss_usd']},{trade['profit_loss_pct']},{trade['entry_order_id']},{trade['exit_order_id']},{trade['created_at']},{trade['closed_at']},{trade['exchange']}\n"
-    # Send CSV file
-    bot.send_document(cid, ('trades.csv', csv_content))
-    bot.send_message(cid, translate("Trades sent.", cid), parse_mode='Markdown')
 
 
 bot.polling()

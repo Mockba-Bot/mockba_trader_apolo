@@ -26,10 +26,12 @@ if redis_url:
     try:
         redis_client = redis.from_url(redis_url)
         redis_client.ping()
+        logger.info("Connected to Redis successfully")
     except redis.ConnectionError as e:
-        print(f"Redis connection error: {e}")
+        logger.warning(f"Redis not available (optional caching disabled): {e}")
         redis_client = None
 else:
+    logger.info("Redis not configured (optional caching disabled)")
     redis_client = None
 
 
@@ -140,6 +142,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
     intro = (
         "You are an experienced retail crypto trader with 10 years of experience.\n"
         "Analyze the attached CSV (80 candles) and orderbook for the given signal.\n\n"
+        "DEFAULT: 'DO NOT EXECUTE' unless ALL strict conditions below are met.\n\n"
         f"• Asset: {signal_dict['asset']}\n"
         f"• Signal: {signal_dict['signal']}\n"
         f"• Confidence: {signal_dict['confidence']}%\n"
@@ -243,7 +246,7 @@ def process_signal():
         if redis_client:
             current_id = signals[0].get('signal_id') if signals else None
             stored_id = redis_client.get("latest_signal_id")
-
+            
             if stored_id and current_id == stored_id.decode('utf-8'):
                 logger.info(f"Signal {current_id} already processed. Skipping.")
                 time.sleep(30)
@@ -333,44 +336,6 @@ def process_signal():
         time.sleep(30)
 
 
-# Position monitoring thread (same as before)
-def position_monitor_loop():
-    """Continuously monitor all open positions."""
-    logger.info("🚀 Starting position monitor...")
-    
-    while True:
-        try:
-            open_positions = get_open_positions()
-            
-            if open_positions:
-                logger.info(f"Monitoring {len(open_positions)} open positions")
-                
-                for pos in open_positions:
-                    closed_info = update_position_pnl(pos['id'], pos)
-                    if closed_info:
-                        emoji = "🟢" if closed_info['pnl_usd'] >= 0 else "🔴"
-                        message = (
-                            f"{emoji} POSITION UPDATE on BINANCE\n"
-                            f"Symbol: {closed_info['symbol']}\n"
-                            f"Side: {closed_info['side'].upper()}\n"
-                            f"Fill Price: {closed_info['fill_price']:.4f}\n"
-                            f"Current Price: {closed_info['current_price']:.4f}\n"
-                            f"PnL: {closed_info['pnl_pct']:.4f}% | ${closed_info['pnl_usd']:.4f}"
-                        )
-                        send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), message)
-
-                    time.sleep(0.1)
-
-            time.sleep(60)
-
-        except KeyboardInterrupt:
-            logger.info("Position monitor stopped by user")
-            break
-        except Exception as e:
-            logger.error(f"Position monitor error: {e}")
-            time.sleep(5)
-
-
 
 if __name__ == "__main__":
     # Check for tables
@@ -378,7 +343,3 @@ if __name__ == "__main__":
 
     # Start signal processing
     process_signal()
-
-    # # start monitoring
-    monitor_thread = threading.Thread(target=position_monitor_loop, daemon=True)
-    monitor_thread.start()

@@ -99,26 +99,26 @@ pedir_obligatorio "🔑 BINANCE_SECRET_KEY" BINANCE_SECRET_KEY
 pedir_obligatorio "🤖 DEEP_SEEK_API_KEY" DEEP_SEEK_API_KEY
 
 echo
-imprimir_info "📱 Configuración del Bot - Paso 2: Telegram (opcional)"
-pedir_opcional "🤖 Telegram API_TOKEN" "" API_TOKEN
-pedir_opcional "💬 TELEGRAM_CHAT_ID" "" TELEGRAM_CHAT_ID
+imprimir_info "📱 Configuración del Bot - Paso 2: Telegram (obligatorias)"
+pedir_obligatorio "🤖 Telegram API_TOKEN" API_TOKEN
+pedir_obligatorio "💬 TELEGRAM_CHAT_ID" TELEGRAM_CHAT_ID
 
 echo
 imprimir_info "🌐 Configuración del Bot - Paso 3: Idioma"
-pedir_opcional "Idioma (es/en)" "es" BOT_LANGUAGE
+pedir_obligatorio "Idioma (es/en)" BOT_LANGUAGE
 
 echo
 imprimir_info "⚙️ Configuración del Bot - Paso 4: Parámetros de Trading"
-pedir_opcional "📊 Riesgo por trade (%)" "1.5" RISK_PER_TRADE_PCT
-pedir_opcional "🎚️ Apalancamiento alto" "5" MAX_LEVERAGE_HIGH
-pedir_opcional "🎚️ Apalancamiento medio" "4" MAX_LEVERAGE_MEDIUM
-pedir_opcional "🎚️ Apalancamiento bajo" "3" MAX_LEVERAGE_SMALL
-pedir_opcional "📈 Expectativa mínima backtest" "0.0025" MICRO_BACKTEST_MIN_EXPECTANCY
+pedir_obligatorio "📊 Riesgo por trade (%) (Ejemplo 1.5)" RISK_PER_TRADE_PCT
+pedir_obligatorio "🎚️ Apalancamiento alto (Ejemplo 10)" MAX_LEVERAGE_HIGH
+pedir_obligatorio "🎚️ Apalancamiento medio (Ejemplo 5)" MAX_LEVERAGE_MEDIUM
+pedir_obligatorio "🎚️ Apalancamiento bajo (Ejemplo 3)" MAX_LEVERAGE_SMALL
+pedir_obligatorio "📈 Expectativa mínima backtest (Ejemplo 0.0040)" MICRO_BACKTEST_MIN_EXPECTANCY
+pedir_obligatorio "🔢 Máximo trades concurrentes (Ejemplo 5)" MAX_CONCURRENT_TRADES
 
 echo
 imprimir_info "📝 Configuración del Bot - Paso 5: Prompt de IA"
-DEFAULT_PROMPT="Analiza este dataset de trading. Basado en estos datos, ¿debería tomar la señal sugerida? ¿Ves patrones técnicos que confirmen? ¿Niveles clave de soporte/resistencia? ¿El order book muestra liquidez suficiente?"
-pedir_opcional "✏️ Prompt personalizado (deja en blanco para predeterminado)" "$DEFAULT_PROMPT" PROMPT_PERSONALIZADO
+pedir_obligatorio "✏️ Prompt personalizado (Ejemplo: 'Eres un experto en trading...')" PROMPT_PERSONALIZADO
 
 # === Guardar archivos ===
 imprimir_estado "Creando archivos de configuración..."
@@ -126,9 +126,9 @@ imprimir_estado "Creando archivos de configuración..."
 cat > docker-compose.yml << EOF
 version: '3.8'
 services:
-  micro-mockba-binance-futures-bot:
-    image: andresdom2004/micro-mockba-binance-futures-bot:latest
-    container_name: micro-mockba-binance-futures-bot
+  micro-mockba-apolo-futures-bot:
+    image: andresdom2004/micro-mockba-apolo-futures-bot:latest
+    container_name: micro-mockba-apolo-futures-bot
     restart: always
     env_file:
       - .env
@@ -141,7 +141,7 @@ services:
     container_name: watchtower-binance
     restart: always
     depends_on:
-      - micro-mockba-binance-futures-bot
+      - micro-mockba-apolo-futures-bot
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -149,6 +149,18 @@ services:
       - WATCHTOWER_POLL_INTERVAL=300
       - WATCHTOWER_LIFECYCLE_HOOKS=true
       - WATCHTOWER_LABEL_ENABLE=true
+
+  redis:
+    image: redis:latest
+    container_name: redis-mockba-binance
+    restart: always
+    ports:
+      - "6379:6379"  # Expose Redis on external port 6391
+    volumes:
+      - redis_data:/data  # Optional: Persist Redis data across restarts
+
+volumes:
+  redis_data:  # Define the volume for Redis data persistence        
 EOF
 
 cat > .env << EOF
@@ -159,6 +171,10 @@ API_TOKEN=$API_TOKEN
 TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID
 BOT_LANGUAGE=$BOT_LANGUAGE
 APP_PORT=8000
+REDIS_URL=redis://redis:6379/0
+CPU_COUNT=0
+MAX_WORKERS=10
+MAX_CONCURRENT_TRADES=$MAX_CONCURRENT_TRADES
 RISK_PER_TRADE_PCT=$RISK_PER_TRADE_PCT
 MAX_LEVERAGE_HIGH=$MAX_LEVERAGE_HIGH
 MAX_LEVERAGE_MEDIUM=$MAX_LEVERAGE_MEDIUM

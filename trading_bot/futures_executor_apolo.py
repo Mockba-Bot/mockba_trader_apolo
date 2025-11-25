@@ -7,16 +7,16 @@ import time
 from dotenv import load_dotenv
 import redis
 import sys
-
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import requests
+import websockets
 from trading_bot.send_bot_message import send_bot_message
 from base58 import b58decode
 from base64 import urlsafe_b64encode
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from logs.log_config import binance_trader_logger as logger
+from logs.log_config import apolo_trader_logger as logger
 
 load_dotenv()
 
@@ -58,13 +58,18 @@ class RateLimiter:
                 time.sleep(sleep_time)
             self.calls.append(time.time())
             
-# Redis
 # Initialize Redis connection
-try:
-    redis_client = redis.from_url(os.getenv("REDIS_URL"))
-    redis_client.ping()
-except redis.ConnectionError as e:
-    print(f"Redis connection error: {e}")
+redis_url = os.getenv("REDIS_URL")
+if redis_url:
+    try:
+        redis_client = redis.from_url(redis_url)
+        redis_client.ping()
+        logger.info("Connected to Redis successfully")
+    except redis.ConnectionError as e:
+        logger.warning(f"Redis not available (optional caching disabled): {e}")
+        redis_client = None
+else:
+    logger.info("Redis not configured (optional caching disabled)")
     redis_client = None
 
 # Risk parameters - SAFER VALUES
@@ -100,9 +105,9 @@ def get_close_price(wallet_address: str, symbol: str = "PERP_NEAR_USDC"):
     topic = f"{symbol}@ticker"
 
     try:
-        async with websockets.connect(url, ping_interval=15) as ws:
+        with websockets.connect(url, ping_interval=15) as ws:
             # Subscribe to ticker topic
-            await ws.send(json.dumps({
+                ws.send(json.dumps({
                 "id": "clientID4",
                 "topic": topic,
                 "event": "subscribe"
@@ -110,14 +115,14 @@ def get_close_price(wallet_address: str, symbol: str = "PERP_NEAR_USDC"):
 
             # print(f"📡 Subscribed to {topic}. Waiting for ticker data...")
 
-            while True:
-                raw = await ws.recv()
-                msg = json.loads(raw)
+        while True:
+            raw = ws.recv()
+            msg = json.loads(raw)
 
-                if msg.get("topic") == topic and "data" in msg:
-                    close_price = msg["data"].get("close")
-                    # print(f"✅ Close price for {symbol}: {close_price}")
-                    return close_price  # or process/send elsewhere
+            if msg.get("topic") == topic and "data" in msg:
+                close_price = msg["data"].get("close")
+                # print(f"✅ Close price for {symbol}: {close_price}")
+                return close_price  # or process/send elsewhere
 
     except Exception as e:
         print(f"❌ Error: {e}")
@@ -212,12 +217,6 @@ def get_available_balance(orderly_secret, orderly_account_id, orderly_public_key
         print(f"❌ General error: {e}")
     return None
 
-def set_leverage(symbol: str, leverage: int):
-    try:
-        client.futures_change_leverage(symbol=symbol, leverage=leverage)
-        logger.info(f"Set leverage for {symbol} to {leverage}x")
-    except Exception as e:
-        logger.error(f"Failed to set leverage for {symbol}: {e}")
 
 def round_step_size(quantity: float, step_size: float) -> float:
     if step_size <= 0:
@@ -225,15 +224,27 @@ def round_step_size(quantity: float, step_size: float) -> float:
     precision = max(0, int(round(-math.log(step_size, 10), 0)))
     return round(quantity - (quantity % step_size), precision)
 
-def calculate_position_size_with_margin_cap(signal: dict, available_balance: float, leverage: int, symbol_info: dict) -> float:
+def calculate_position_size_with_margin_cap(
+    signal: dict,
+    available_balance: float,
+    leverage: int,
+    asset_info: dict  # renamed from symbol_info for clarity
+) -> float:
     """
-    Calculate position size based on:
-    1. Risk amount = balance * RISK_PER_TRADE_PCT / |entry - SL|
-    2. Cap by max affordable notional = balance * leverage * 0.95
+    Calculate position size with margin cap using asset_info fields:
+    - base_tick → step size
+    - min_notional → minimum trade notional
+    - base_imr → implied max leverage = 1 / base_imr
     """
     entry = float(signal['entry'])
     sl = float(signal['stop_loss'])
-    side = signal['side'].upper()
+    # side = signal['side'].upper()
+
+    # Validate leverage against asset's IMR
+    max_allowed_leverage = int(1 / asset_info['base_imr']) if asset_info['base_imr'] > 0 else 1
+    if leverage > max_allowed_leverage:
+        logger.warning(f"Leverage {leverage}x exceeds max allowed {max_allowed_leverage}x. Capping.")
+        leverage = max_allowed_leverage
 
     risk_amount = available_balance * (RISK_PER_TRADE_PCT / 100)
     risk_per_unit = abs(entry - sl)
@@ -242,40 +253,46 @@ def calculate_position_size_with_margin_cap(signal: dict, available_balance: flo
         logger.warning("Invalid stop loss placement")
         return 0.0
 
-    # Prevent division by zero
-    if risk_per_unit < 1e-10:  # Very small risk per unit
+    if risk_per_unit < 1e-10:
         logger.warning("Risk per unit too small, skipping trade")
         return 0.0
 
     qty_by_risk = risk_amount / risk_per_unit
 
-    # Margin-based cap - SAFER
-    max_notional = available_balance * leverage * 0.5  # 50% of available margin (was 75%)
-    
-    # Prevent division by zero for entry price
+    # Margin cap: use only a portion of available buying power (50% for safety)
+    max_notional = available_balance * leverage * 0.5
     if entry <= 0:
         logger.warning("Invalid entry price")
         return 0.0
-        
     qty_by_margin = max_notional / entry
 
     qty = min(qty_by_risk, qty_by_margin)
 
-    # Round and validate
-    qty = round_step_size(qty, symbol_info['stepSize'])
-    if qty < symbol_info['minQty']:
-        logger.warning(f"Qty {qty} below minQty {symbol_info['minQty']}")
+    # Round to base_tick (step size)
+    step_size = asset_info['base_tick']
+    qty = round_step_size(qty, step_size)
+
+    # Enforce min base quantity
+    if qty < asset_info['base_min']:
+        logger.warning(f"Qty {qty} below min base quantity {asset_info['base_min']}")
         return 0.0
 
+    # Enforce min notional value
     notional = qty * entry
-    if notional < symbol_info['minNotional']:
-        logger.warning(f"Notional ${notional:.2f} below min ${symbol_info['minNotional']}")
+    if notional < asset_info['min_notional']:
+        logger.warning(f"Notional ${notional:.2f} below min ${asset_info['min_notional']}")
+        return 0.0
+
+    # Optional: enforce max notional (quote_max)
+    if notional > asset_info['quote_max']:
+        logger.warning(f"Notional ${notional:.2f} exceeds max ${asset_info['quote_max']}")
+        # Optionally cap or reject
         return 0.0
 
     return qty
 
 rate_limiter = RateLimiter(max_calls=10, period=1)
-def place_futures_order(signal: dict, , , interval):
+def place_futures_order(signal: dict):
     """
     Creates and submits a BRACKET order with TAKE_PROFIT and STOP_LOSS child orders.
 
@@ -492,17 +509,14 @@ def place_futures_order(signal: dict, , , interval):
             logger.error(f"❌ Error creating order: status={response.status_code}, text={response.text}")
 
     # Success: mark open + store order id
-    operations.set_is_open(chat_id, True)
     rows = response.json().get("data", {}).get("rows", [])
     positional_tp_sl = next((row for row in rows if row.get("algo_type") == "POSITIONAL_TP_SL"), {})
     order_id = positional_tp_sl.get("order_id", "0")
-    operations.set_order_id(chat_id, order_id)
 
     msg = (
         f"✅ Order created: {symbol}\n"
         f"Side: {side_str}\n"
         f"Lev: {round(leverage, 2)}x\n"
-        f"Interval: {interval}\n"
         f"Qty: {round(qty, 4)}\n"
         f"Price: {round(live_price, 4)}\n"
         f"TP trigger: {round(tp_trigger, 4)}\n"
@@ -510,6 +524,9 @@ def place_futures_order(signal: dict, , , interval):
         f"Notional: {round(order_notional, 2)}\n"
         f"Order ID: {order_id}"
     )
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
     send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), msg)
     logger.info(f"✅ Order created for {symbol} | {side_str} lev={leverage} qty={qty} @~{live_price} | TP={tp_trigger} SL={sl_trigger}")
+
+# if __name__ == "__main__":
+#     asset_info = get_futures_exchange_info("PERP_NEAR_USDC")
+#     print(asset_info)    

@@ -33,13 +33,6 @@ except redis.ConnectionError as e:
 
 # Risk parameters - SAFER VALUES
 RISK_PER_TRADE_PCT = float(os.getenv("RISK_PER_TRADE_PCT", "0.3"))  # Reduced to 0.3%
-LEVERAGE_MAP = {
-    "🚀 VERY STRONG": int(os.getenv("MAX_LEVERAGE_VERY_STRONG", "3")),  # Reduced to 3x
-    "💪 STRONG": int(os.getenv("MAX_LEVERAGE_STRONG", "2")),            # Reduced to 2x
-    "👍 MODERATE": int(os.getenv("MAX_LEVERAGE_MODERATE", "1")),        # Reduced to 1x
-    "⚠️ WEAK": 0,
-    "❌ VERY WEAK": 0
-}
 
 def get_confidence_level(confidence: float) -> str:
     if confidence >= 3.0:  # STRONGER thresholds
