@@ -1,0 +1,23 @@
+
+TASKS
+1. Price and Price Action: Does the candlestick structure confirm or contradict the signal? Look for rejections, false breakouts, high liquidity zones.
+2. Order Book: Is there significant imbalance between bids/asks near current price? Where are the liquidity walls? Is a stop hunt likely?
+3. Counter Signal: Does the order book suggest a bull/bear trap (stop hunt)? Is the signal aligned with real institutional flow?
+4. Risk Assessment: What's the stop hunt risk? Should we be cautious?
+5. Entry Strategy: Best entry zone (avoid chasing if signal is too old)
+6. Position Sizing for ${account_size} account with 1:3 risk:reward:
+   . Entry Price (with 0.1% buffer to avoid slippage)
+   . Stop Loss (1.5-2% risk max for ${account_size} account)
+   . Take Profit (3x stop distance for 1:3 R:R)
+   . Position Size: Calculate for ${account_size} account at {max_leverage}x leverage max
+7. TRADE ONLY IF: Signal is still fresh, no obvious reversal patterns, orderbook supports direction, NO major stop hunts detected
+
+
+RULES:
+• Max 1.5% account risk per trade (for ${account_size} = max ${max_loss} loss)
+• No over-leveraging - use {max_leverage}x max for ${account_size} account
+• If signal is 2+ hours old, suggest waiting for better entry
+• If orderbook shows opposite direction has significantly more liquidity, be very cautious
+• If recent candles show false breakouts in signal direction, avoid (trap risk)
+• If current price is near major liquidity zones (large order walls), expect stop hunts
+• If RSI shows extreme overbought/oversold, expect reversals

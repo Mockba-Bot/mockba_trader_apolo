@@ -1,0 +1,24 @@
+services:
+  micro-mockba-apolo-futures-bot:
+    image: andresdom2004/micro-mockba-apolo-futures-bot:latest
+    container_name: micro-mockba-apolo-futures-bot
+    restart: always
+    env_file: 
+      - .env  # Load environment variables for Micro Central
+    volumes:
+      - ./.env:/app/.env  # Mount .env for editing
+      - ./llm_prompt_template.txt:/app/futures_perps/trade/apolo/llm_prompt_template.txt  # Mount prompt template for user editing
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower-apolo
+    restart: always
+    depends_on:
+      - micro-mockba-apolo-futures-bot  # Fixed to match the correct service name
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=300  # Check for updates every 5 minutes
+      - WATCHTOWER_LIFECYCLE_HOOKS=true  # Ensure containers restart properly after an update
+      - WATCHTOWER_LABEL_ENABLE=true  # Only update containers with the `com.centurylinklabs.watchtower.enable=true` label
