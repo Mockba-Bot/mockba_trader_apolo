@@ -65,7 +65,7 @@ pedir_opcional() {
 
 # === Main Flow ===
 
-DIRECTORIO_PROYECTO="/opt/mockba-trader"
+DIRECTORIO_PROYECTO="/opt/mockba-apolo-trader"
 imprimir_estado "Creando directorio del proyecto: $DIRECTORIO_PROYECTO"
 mkdir -p "$DIRECTORIO_PROYECTO"
 cd "$DIRECTORIO_PROYECTO" || { imprimir_error "No se pudo acceder a $DIRECTORIO_PROYECTO"; exit 1; }
@@ -94,8 +94,9 @@ fi
 # === Configuración interactiva ===
 echo
 imprimir_info "🔧 Configuración del Bot - Paso 1: API Keys (obligatorias)"
-pedir_obligatorio "🔑 BINANCE_API_KEY" BINANCE_API_KEY
-pedir_obligatorio "🔑 BINANCE_SECRET_KEY" BINANCE_SECRET_KEY
+pedir_obligatorio "🔑 ORDERLY_API_KEY" ORDERLY_API_KEY
+pedir_obligatorio "🔑 ORDERLY_SECRET" ORDERLY_SECRET
+pedir_obligatorio "🔑 ORDERLY_ACCOUNT_ID"
 pedir_obligatorio "🤖 DEEP_SEEK_API_KEY" DEEP_SEEK_API_KEY
 
 echo
@@ -134,11 +135,11 @@ services:
       - .env
     volumes:
       - ./.env:/app/.env
-      - ./prompt.txt:/app/futures_perps/trade/binance/llm_prompt_template.txt
+      - ./prompt.txt:/app/futures_perps/trade/apolo/llm_prompt_template.txt
 
   watchtower:
     image: containrrr/watchtower
-    container_name: watchtower-binance
+    container_name: watchtower-apolo
     restart: always
     depends_on:
       - micro-mockba-apolo-futures-bot
@@ -152,7 +153,7 @@ services:
 
   redis:
     image: redis:latest
-    container_name: redis-mockba-binance
+    container_name: redis-mockba-apolo
     restart: always
     ports:
       - "6379:6379"  # Expose Redis on external port 6391
@@ -164,8 +165,10 @@ volumes:
 EOF
 
 cat > .env << EOF
-BINANCE_API_KEY=$BINANCE_API_KEY
-BINANCE_SECRET_KEY=$BINANCE_SECRET_KEY
+ORDERLY_BASE_URL=https://api.orderly.org
+ORDERLY_API_KEY=$ORDERLY_API_KEY
+ORDERLY_SECRET=$ORDERLY_SECRET
+ORDERLY_ACCOUNT_ID=$ORDERLY_ACCOUNT_ID
 DEEP_SEEK_API_KEY=$DEEP_SEEK_API_KEY
 API_TOKEN=$API_TOKEN
 TELEGRAM_CHAT_ID=$TELEGRAM_CHAT_ID

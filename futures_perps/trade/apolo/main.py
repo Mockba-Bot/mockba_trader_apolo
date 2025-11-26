@@ -1,7 +1,6 @@
 import json
 import requests
 import os
-import threading
 import time
 import sys
 import re
@@ -10,11 +9,10 @@ from pydantic import BaseModel
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from db.db_ops import get_open_positions, update_position_pnl, initialize_database_tables, get_bot_status
+from db.db_ops import  initialize_database_tables, get_bot_status
 from logs.log_config import binance_trader_logger as logger
 from binance.client import Client as BinanceClient
-from trading_bot.send_bot_message import send_bot_message
-from historical_data import get_historical_data_limit_binance, get_orderbook
+from historical_data import get_historical_data_limit_apolo, get_orderbook
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -36,7 +34,7 @@ else:
 
 
 # Import your executor
-from trading_bot.futures_executor_binance import place_futures_order, get_confidence_level as executor_get_confidence_level
+from trading_bot.futures_executor_apolo import place_futures_order, get_user_statistics
 
 # Import your liquidity persistence monitor
 import liquidity_persistence_monitor as lpm
@@ -88,26 +86,6 @@ def load_prompt_template():
     except FileNotFoundError:
         raise FileNotFoundError("llm_prompt_template.txt not found. Please create the prompt file.")
 
-def get_current_balance():
-    """Get current account balance from Binance"""
-    from binance.client import Client as BinanceClient
-    import os
-    
-    client = BinanceClient(
-        api_key=os.getenv("BINANCE_API_KEY"),
-        api_secret=os.getenv("BINANCE_SECRET_KEY"),
-        testnet=False
-    )
-    
-    try:
-        account = client.futures_account()
-        for asset_info in account['assets']:
-            if asset_info['asset'] == 'USDT':
-                return float(asset_info['marginBalance'])
-    except Exception as e:
-        # Default to 20 if API call fails
-        return 20.0
-
 # Helper: Format orderbook as text (not CSV!)
 def format_orderbook_as_text(ob: dict) -> str:
     lines = ["Top Bids (price, quantity):"]
@@ -120,14 +98,20 @@ def format_orderbook_as_text(ob: dict) -> str:
     
     return "\n".join(lines)
 
+def get_active_apolo_positions_count() -> int:
+    """Get count of non-zero positions from Binance Futures"""
+    active_count = get_user_statistics()
+    
+    return active_count
+
 
 def analyze_with_llm(signal_dict: dict) -> dict:
     """Send to LLM for detailed analysis using fixed prompt structure."""
     
     # ✅ Get DataFrame with ALL indicators (your function handles timeframe logic)
-    df = get_historical_data_limit_binance(
-        pair=signal_dict['asset'],
-        timeframe=signal_dict['interval'],
+    df = get_historical_data_limit_apolo(
+        symbol=signal_dict['asset'],
+        interval=signal_dict['interval'],
         limit=80
     )
     csv_content = df.to_csv(index=False)  # ← Preserves all columns automatically
@@ -140,9 +124,9 @@ def analyze_with_llm(signal_dict: dict) -> dict:
 
     # --- Rest of your prompt logic (unchanged) ---
     intro = (
-        "You are an experienced retail crypto trader with 10 years of experience.\n"
-        "Analyze the attached CSV (80 candles) and orderbook for the given signal.\n\n"
-        "DEFAULT: 'DO NOT EXECUTE' unless ALL strict conditions below are met.\n\n"
+        "Eres un trader discrecional de elite en futuros de cripto con más de 10 años de experiencia.  \n"
+        "Tu trabajo es **validar o rechazar** la señal dada usando SOLO los datos proporcionados. .\n"
+        "Analiza el CSV adjunto (80 velas) y el libro de órdenes para la señal dada.\n\n"
         f"• Asset: {signal_dict['asset']}\n"
         f"• Signal: {signal_dict['signal']}\n"
         f"• Confidence: {signal_dict['confidence']}%\n"
@@ -192,6 +176,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
 def process_signal():
     while True:
         """Process incoming signal from Api bot with combined CSV + orderbook file"""
+
         # Only proceed if bot is running
         if not get_bot_status():
             logger.info("Bot is paused. Waiting to resume...")
@@ -209,7 +194,7 @@ def process_signal():
 
         # If the ressponse if a empty list, skip
         if response.json() == []:
-            logger.info("No active signals received.")
+            # logger.info("No active signals received.")
             time.sleep(30)
             continue
         
@@ -248,16 +233,25 @@ def process_signal():
             stored_id = redis_client.get("latest_signal_id")
             
             if stored_id and current_id == stored_id.decode('utf-8'):
-                logger.info(f"Signal {current_id} already processed. Skipping.")
+                # logger.info(f"Signal {current_id} already processed. Skipping.")
                 time.sleep(30)
                 continue
             elif current_id:
                 redis_client.setex("latest_signal_id", 3600, current_id)
         else:
             logger.warning("Redis not available, skipping deduplication")
+            
 
         # Process the single signal (API always returns one)
         if signals:
+
+            # ✅ Enforce max 5 concurrent positions
+            active_count = get_active_apolo_positions_count()
+            if active_count >= int(os.getenv("MAX_CONCURRENT_TRADES", "5")):
+                logger.info(f"Max concurrent positions ({os.getenv('MAX_CONCURRENT_TRADES', '5')}) reached. Skipping new signal for {signals[0]['asset']}")
+                time.sleep(30)
+                continue
+
             signal = signals[0]
             # Get confidence level
             confidence_level = get_confidence_level(signal['confidence_percent'])
@@ -338,8 +332,8 @@ def process_signal():
 
 
 if __name__ == "__main__":
-    # Check for tables
+    # # Check for tables
     initialize_database_tables()
 
-    # Start signal processing
+    # # Start signal processing
     process_signal()

@@ -310,7 +310,7 @@ def get_features_for_strategy(interval, strategy):
 
 
 # ✅ Fetch historical Orderly data with global rate limiting
-def fetch_historical_orderly(symbol, interval, limit):
+def get_historical_data_limit_apolo(symbol, interval, limit):
     rate_limiter()  # ✅ Apply global rate limit
 
     timestamp = str(int(time.time() * 1000))

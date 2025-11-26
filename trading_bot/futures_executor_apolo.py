@@ -74,13 +74,6 @@ else:
 
 # Risk parameters - SAFER VALUES
 RISK_PER_TRADE_PCT = float(os.getenv("RISK_PER_TRADE_PCT", "0.3"))  # Reduced to 0.3%
-LEVERAGE_MAP = {
-    "🚀 VERY STRONG": int(os.getenv("MAX_LEVERAGE_VERY_STRONG", "3")),  # Reduced to 3x
-    "💪 STRONG": int(os.getenv("MAX_LEVERAGE_STRONG", "2")),            # Reduced to 2x
-    "👍 MODERATE": int(os.getenv("MAX_LEVERAGE_MODERATE", "1")),        # Reduced to 1x
-    "⚠️ WEAK": 0,
-    "❌ VERY WEAK": 0
-}
 
 # Helpers
 def round_down_to_tick(value: float, tick: float) -> float:
@@ -527,6 +520,48 @@ def place_futures_order(signal: dict):
     send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), msg)
     logger.info(f"✅ Order created for {symbol} | {side_str} lev={leverage} qty={qty} @~{live_price} | TP={tp_trigger} SL={sl_trigger}")
 
+
+def get_user_statistics():
+    orderly_account_id = ORDERLY_ACCOUNT_ID
+    orderly_secret     = ORDERLY_SECRET
+    orderly_public_key = ORDERLY_PUBLIC_KEY
+
+    if orderly_secret.startswith("ed25519:"):
+        orderly_secret = orderly_secret.replace("ed25519:", "")
+    private_key = Ed25519PrivateKey.from_private_bytes(b58decode(orderly_secret))
+
+    timestamp = str(int(time.time() * 1000))
+    path = "/v1/positions"
+    message = f"{timestamp}GET{path}"
+    signature = urlsafe_b64encode(private_key.sign(message.encode())).decode()
+
+    headers = {
+        "orderly-timestamp": timestamp,
+        "orderly-account-id": orderly_account_id,
+        "orderly-key": orderly_public_key,
+        "orderly-signature": signature,
+    }
+
+    url = f"{BASE_URL}{path}"
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("success") and "data" in data:
+            positions = data["data"].get("rows", [])
+            open_positions = [p for p in positions if p.get("position_qty", 0) != 0]
+            count = len(open_positions)
+            return count
+        else:
+            print("⚠️ No position data returned.")
+            return 0
+
+    except Exception as e:
+        print(f"❌ Error fetching positions: {e}")
+        return 0
+
 # if __name__ == "__main__":
-#     asset_info = get_futures_exchange_info("PERP_NEAR_USDC")
+#     asset_info = get_user_statistics()
 #     print(asset_info)    
