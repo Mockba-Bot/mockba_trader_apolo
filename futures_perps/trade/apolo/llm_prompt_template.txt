@@ -3,37 +3,35 @@
 1. **CONFIRMACIÓN DE VELAS**  
    - ¿La acción del precio (últimas 3–5 velas) apoya la señal?  
    - ¿Hay signos de rechazo, ruptura falsa o agotamiento en la dirección de la señal?  
-   - ¿Está la señal alineada con soporte/resistencia clave o nodos de alto volumen?
+   - ¿Está la señal alineada con soporte/resistencia clave?
 
 2. **LIQUIDEZ DEL LIBRO DE ÓRDENES**  
-   - ¿Hay un claro desequilibrio bid/ask en la dirección de la señal dentro del 0.3% del precio?  
-   - ¿Hay grandes muros de liquidez *contra* la señal que sugieran una caza de stops?  
-   - ¿Está el precio actual cerca de un cluster de órdenes en reposo que puedan desencadenar volatilidad?
+   - ¿Hay desequilibrio bid/ask en la dirección de la señal dentro del 0.3% del precio?  
+   - ¿Hay grandes muros de liquidez *contra* la señal que sugieran caza de stops?
 
-3. **VALIDACIÓN DE TRAMPA Y FLUJO**  
-   - ¿Muestra el libro de órdenes signos de una trampa alcista/bajista (ej. liquidez delgada en dirección de la señal)?  
-   - ¿Apoya el flujo institucional (volumen sostenido + momentum de precio) el movimiento?  
-   - ¿Ejecución contraria de la señal por dinero inteligente?
+3. **EVALUACIÓN DE RIESGO**  
+   - ¿Es ALTO el riesgo de caza de stops?  
+   - ¿RSI >70 o <30? → si sí, esperar reversión  
+   - ¿La señal tiene más de 2 horas? → si sí, rechazar a menos que haya retest
 
-4. **EVALUACIÓN DE RIESGO**  
-   - ¿Es ALTO el riesgo de caza de stops? (ej. precio cerca de máximo/mínimo reciente con liquidez superficial)  
-   - ¿RSI >70 (sobrecomprado) o <30 (sobrevendido)? → si sí, esperar reversión  
-   - ¿La señal es mayor a 2 horas? → si sí, **rechazar a menos que el precio esté retestando zona de entrada**
-
-5. **ENTRADA Y TAMAÑO (SOLO SI TODOS LOS ANTERIORES PASAN)**  
-   - **Entrada**: Punto medio del mejor bid/ask o ligero fade en liquidez (agregar buffer de 0.1% para slippage)  
-   - **Stop Loss**: Colocar más allá del punto de swing reciente — máximo 1.5% riesgo de cuenta (${max_loss})  
-   - **Take Profit**: Exactamente 3x distancia SL (1:3 R:R)  
-   - **Tamaño de Posición**:  
-        Qty = (${max_loss}) / |Entrada − SL|  
-        Notional = Qty × Entrada  
-        Leverage = min(${max_leverage}x, Notional / ${account_size}) → **nunca exceder ${max_leverage}x**
+4. **ENTRADA Y GESTIÓN (SOLO SI TODO PASA)**  
+   - **Stop Loss**: más allá del swing reciente  
+   - **Take Profit**: exactamente 3x la distancia del SL (ratio 1:3)  
+   - **NO uses apalancamiento mayor al permitido** (ver reglas abajo)
 
 ### 🚫 REGLAS DE RECHAZO DURO (Responder "NO EJECUTAR" si CUALQUIERA aplica)
-- Señal contradicha por velas recientes (ej. envolvente bajista en señal larga)  
-- Libro de órdenes muestra 2x+ liquidez en dirección *opuesta* dentro del 0.5%  
-- Patrón claro de caza de stops (ej. ruptura falsa en zona de baja liquidez)  
-- RSI extremo (≥75 o ≤25) con divergencia  
-- Señal es antigua (>2 horas) y precio se ha movido >0.8% lejos  
-- Tasa de ganancia de backtest < 70% O expectativa < 0.0040  
-- Leverage calculado > ${max_leverage}x
+- Señal contradicha por velas recientes  
+- Libro muestra 2x+ liquidez en dirección opuesta dentro del 0.5%  
+- Patrón claro de caza de stops  
+- RSI ≥75 o ≤25 con divergencia  
+- Señal antigua (>2h) y precio movido >0.8%  
+- Backtest: winrate < 70% o expectativa < 0.0040  
+- Apalancamiento requerido excede el máximo permitido
+
+👉 Si apruebas la señal, calcula:
+- entry: precio actual de mercado
+- stop_loss: nivel válido más allá del swing
+- take_profit: entry ± 3 × |entry − stop_loss|
+- side: "BUY" para largos, "SELL" para cortos
+
+Return ONLY valid JSON with: symbol, side, entry, stop_loss, take_profit

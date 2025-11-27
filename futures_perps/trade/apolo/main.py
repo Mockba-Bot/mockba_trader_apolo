@@ -107,6 +107,23 @@ def get_active_apolo_positions_count() -> int:
 
 def analyze_with_llm(signal_dict: dict) -> dict:
     """Send to LLM for detailed analysis using fixed prompt structure."""
+
+    # Normalize signal direction for LLM and executor
+    if signal_dict['signal'] == 1:
+        signal_side_str = "BUY"
+        signal_direction = "LONG"
+    elif signal_dict['signal'] == -1:
+        signal_side_str = "SELL"
+        signal_direction = "SHORT"
+    else:
+        # Fallback for string inputs like "LONG"
+        raw = str(signal_dict['signal']).upper()
+        if 'BUY' in raw or 'LONG' in raw:
+            signal_side_str = "BUY"
+            signal_direction = "LONG"
+        else:
+            signal_side_str = "SELL"
+            signal_direction = "SHORT"
     
     # ✅ Get DataFrame with ALL indicators (your function handles timeframe logic)
     df = get_historical_data_limit_apolo(
@@ -128,7 +145,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
         "Tu trabajo es **validar o rechazar** la señal dada usando SOLO los datos proporcionados. .\n"
         "Analiza el CSV adjunto (80 velas) y el libro de órdenes para la señal dada.\n\n"
         f"• Asset: {signal_dict['asset']}\n"
-        f"• Signal: {signal_dict['signal']}\n"
+        f"• Signal: {signal_direction} ({signal_side_str})\n"
         f"• Confidence: {signal_dict['confidence']}%\n"
         f"• Timeframe: {signal_dict['interval']}\n"
         f"• Current Price: ${latest_close_price}\n"
@@ -143,11 +160,43 @@ def analyze_with_llm(signal_dict: dict) -> dict:
 
     analysis_logic = load_prompt_template()
 
-    response_format = (
-        f"\nRETURN ONLY JSON with keys: symbol, side, entry, take_profit, stop_loss, confidence: {signal_dict['confidence_percent']}, leverage: {leverage}\n"
+    # Ensure LLM knows how to set price levels — even if user prompt is vague
+    fallback_price_instructions = (
+        "\n\n### SI NO SE ESPECIFICA LO CONTRARIO, USA ESTAS REGLAS OBLIGATORIAS:\n"
+        "- entry: usa el precio actual de mercado (último close del CSV)\n"
+        "- stop_loss: colócalo MÁS ALLÁ del swing reciente (soporte/resistencia más cercano en contra de la señal)\n"
+        "- take_profit: aplica ratio 1:3 → take_profit = entry ± 3 × |entry − stop_loss|\n"
+        "- Asegúrate de que SL y TP estén en el lado correcto según la dirección (BUY/SELL)\n"
     )
 
-    prompt = intro + analysis_logic + response_format
+    # Only add it if not already covered (optional), or just always add it for safety
+    analysis_logic += fallback_price_instructions
+
+    response_format = (
+        "\nRetorna SOLAMENTE un objeto JSON válido con las siguientes claves:\n"
+        "- symbol: str (e.g., 'LTCUSDT')\n"
+        "- side: str ('BUY' or 'SELL')\n"
+        "- entry: float (use current market price as base)\n"
+        "- take_profit: float\n"
+        "- stop_loss: float\n"
+        "- confidence: float (copy from input: " + str(signal_dict['confidence_percent']) + ")\n"
+        "- leverage: int (use: " + str(leverage) + ")\n"
+        "\nDo NOT include any other text, explanation, or markdown. Only pure JSON."
+    )
+
+    # Inject real risk rules as a SYSTEM-like instruction
+    risk_context = (
+        f"\n--- PARÁMETROS DE RIESGO ACTUALES (OBLIGATORIOS) ---\n"
+        f"- Máximo apalancamiento permitido: {leverage}x\n"
+        f"- Riesgo por operación: {RISK_PER_TRADE_PCT}% del balance\n"
+        f"- Balance estimado: ~${get_current_balance():.2f} (para cálculos)\n"
+        f"- Ratio riesgo:beneficio obligatorio: 1:3\n"
+        f"- Stop loss debe estar más allá del último swing válido\n"
+        f"- Si el apalancamiento necesario supera {leverage}x, RECHAZA la señal\n"
+        f"- Si no puedes calcular niveles válidos, responde: NO EJECUTAR\n"
+    )
+
+    prompt = intro + analysis_logic + risk_context + response_format
 
     # --- Send to DeepSeek ---
     response = requests.post(
