@@ -156,7 +156,7 @@ services:
     container_name: redis-mockba-apolo
     restart: always
     ports:
-      - "6379:6379"  # Expose Redis on external port 6391
+      - "6392:6380"  # Expose Redis on external port 6392
     volumes:
       - redis_data:/data  # Optional: Persist Redis data across restarts
 
