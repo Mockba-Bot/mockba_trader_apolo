@@ -6,9 +6,7 @@ import sys
 from contextlib import contextmanager
 from datetime import datetime
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from logs.log_config import binance_trader_logger as logger
-
+from logs.log_config import apolo_trader_logger as logger
 DB_PATH = "data/trading.db"
 os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 

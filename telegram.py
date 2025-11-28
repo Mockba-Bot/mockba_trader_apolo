@@ -84,7 +84,7 @@ def command_start(m):
         return
     cid = m.chat.id
     nom = m.chat.first_name
-    text = translate("Welcome to Mockba! With this bot, you trade against Binance.", cid)
+    text = translate("Welcome to Mockba! With this bot, you trade against Apolo Dex.", cid)
     welcome_text = f"{text}."
     bot.send_message(cid,
                     welcome_text + str(nom) + " - " + str(cid))

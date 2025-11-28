@@ -25,12 +25,12 @@ class DateRotatingFileHandler(RotatingFileHandler):
 
 
 
-# Configure Binance trader logger
+# Configure Apolo trader logger
 apolo_trader_logger = logging.getLogger('apolo_trader_logger')
 if not apolo_trader_logger.hasHandlers():
     apolo_trader_logger.setLevel(logging.DEBUG)
 
-    # Binance file handler
+    # Apolo file handler
     apolo_handler = DateRotatingFileHandler(
         os.path.join(os.path.dirname(__file__), 'apolo_trader.log'), 
         maxBytes=5*1024*1024, 

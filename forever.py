@@ -6,8 +6,8 @@ from datetime import datetime
 
 # List of scripts to run (relative to project root)
 scripts = [
-    # binance futures perp scalping bot
-    "futures_perps/trade/binance/main.py",
+    # apolo futures perp scalping bot
+    "futures_perps/trade/apolo/main.py",
     # Telegram bot for user interaction
     "telegram.py",
 ]

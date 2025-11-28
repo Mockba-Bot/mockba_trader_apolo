@@ -10,8 +10,7 @@ from pydantic import BaseModel
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from db.db_ops import  initialize_database_tables, get_bot_status
-from logs.log_config import binance_trader_logger as logger
-from binance.client import Client as BinanceClient
+from logs.log_config import apolo_trader_logger as logger
 from historical_data import get_historical_data_limit_apolo, get_orderbook
 
 # Load environment variables
@@ -81,7 +80,7 @@ def get_leverage_by_confidence(confidence: float) -> int:
 def load_prompt_template():
     """Load LLM prompt from file"""
     try:
-        with open("futures_perps/trade/binance/llm_prompt_template.txt", "r") as f:
+        with open("futures_perps/trade/apolo/llm_prompt_template.txt", "r") as f:
             return f.read()
     except FileNotFoundError:
         raise FileNotFoundError("llm_prompt_template.txt not found. Please create the prompt file.")
@@ -99,7 +98,7 @@ def format_orderbook_as_text(ob: dict) -> str:
     return "\n".join(lines)
 
 def get_active_apolo_positions_count() -> int:
-    """Get count of non-zero positions from Binance Futures"""
+    """Get count of non-zero positions from Apolo Dex"""
     active_count = get_user_statistics()
     
     return active_count
