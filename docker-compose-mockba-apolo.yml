@@ -2,16 +2,19 @@ services:
   micro-mockba-apolo-futures-bot:
     image: andresdom2004/micro-mockba-apolo-futures-bot:latest
     container_name: micro-mockba-apolo-futures-bot
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     restart: always
     env_file: 
       - .env  # Load environment variables for Micro Central
     volumes:
       - ./.env:/app/.env  # Mount .env for editing
-      - ./llm_prompt_template.txt:/app/futures_perps/trade/apolo/llm_prompt_template.txt  # Mount prompt template for user editing
+      - ./llm_prompt_template.txt:/app/futures_perps/trade/binance/llm_prompt_template.txt  # Mount prompt template for user editing
 
   watchtower:
     image: containrrr/watchtower
-    container_name: watchtower-apolo
+    container_name: watchtower-binance
     restart: always
     depends_on:
       - micro-mockba-apolo-futures-bot  # Fixed to match the correct service name
@@ -25,12 +28,12 @@ services:
 
   redis:
     image: redis:latest
-    container_name: redis-mockba-apolo
+    container_name: redis-mockba-binance
     restart: always
     ports:
-      - "6392:6379"  # Expose Redis on external port 6379
+      - "6392:6380"  # Expose Redis on external port 6392
     volumes:
       - redis_data:/data  # Optional: Persist Redis data across restarts
 
 volumes:
-  redis_data:  # Define the volume for Redis data persistence    
+  redis_data:  # Define the volume for Redis data persistence        
