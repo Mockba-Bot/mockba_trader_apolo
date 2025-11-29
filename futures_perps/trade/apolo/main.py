@@ -140,6 +140,8 @@ def analyze_with_llm(signal_dict: dict) -> dict:
     orderbook = get_orderbook(signal_dict['asset'], limit=20)
     orderbook_content = format_orderbook_as_text(orderbook)  # ← See helper below
 
+    balance = get_available_balance(ORDERLY_SECRET, ORDERLY_ACCOUNT_ID, ORDERLY_PUBLIC_KEY) 
+
     # --- Rest of your prompt logic (unchanged) ---
     intro = (
         "Eres un trader discrecional de elite en futuros de cripto con más de 10 años de experiencia.  \n"
@@ -185,19 +187,12 @@ def analyze_with_llm(signal_dict: dict) -> dict:
         "\nDo NOT include any other text, explanation, or markdown. Only pure JSON."
     )
 
-    orderly_account_id = ORDERLY_ACCOUNT_ID
-    orderly_secret     = ORDERLY_SECRET
-    orderly_public_key = ORDERLY_PUBLIC_KEY
-
-
-    balance = get_available_balance(orderly_secret, orderly_account_id, orderly_public_key)
-
     # Inject real risk rules as a SYSTEM-like instruction
     risk_context = (
         f"\n--- PARÁMETROS DE RIESGO ACTUALES (OBLIGATORIOS) ---\n"
         f"- Máximo apalancamiento permitido: {leverage}x\n"
         f"- Riesgo por operación: {RISK_PER_TRADE_PCT}% del balance\n"
-        f"- Balance estimado: ~${get_current_balance():.2f} (para cálculos)\n"
+        f"- Balance estimado: ~${balance():.2f} (para cálculos)\n"
         f"- Ratio riesgo:beneficio obligatorio: 1:3\n"
         f"- Stop loss debe estar más allá del último swing válido\n"
         f"- Si el apalancamiento necesario supera {leverage}x, RECHAZA la señal\n"
@@ -241,7 +236,7 @@ def process_signal():
             continue
 
         # Get signal from Mockba ML
-        URL = "https://signal.globaldv.net/api/v1/signals/active?venue=CEX"
+        URL = "https://signal.globaldv.net/api/v1/signals/active?venue=DEX"
         # The API is free, get no post
         response = requests.get(URL)
         if response.status_code != 200:
@@ -290,7 +285,7 @@ def process_signal():
             stored_id = redis_client.get("latest_signal_id")
             
             if stored_id and current_id == stored_id.decode('utf-8'):
-                # logger.info(f"Signal {current_id} already processed. Skipping.")
+                logger.info(f"Signal {current_id} already processed. Skipping.")
                 time.sleep(30)
                 continue
             elif current_id:
