@@ -6,34 +6,44 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     restart: always
-    env_file: 
-      - .env  # Load environment variables for Micro Central
+    env_file:
+      - .env
     volumes:
-      - ./.env:/app/.env  # Mount .env for editing
-      - ./llm_prompt_template.txt:/app/futures_perps/trade/binance/llm_prompt_template.txt  # Mount prompt template for user editing
+      - ./.env:/app/.env
+      - ./llm_prompt_template.txt:/app/futures_perps/trade/apolo/llm_prompt_template.txt
+    depends_on:
+      - redis-apolo
+    networks:
+      - mockba-apolo-net
 
   watchtower:
     image: containrrr/watchtower
-    container_name: watchtower-binance
+    container_name: watchtower-apolo
     restart: always
-    depends_on:
-      - micro-mockba-apolo-futures-bot  # Fixed to match the correct service name
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_POLL_INTERVAL=300  # Check for updates every 5 minutes
-      - WATCHTOWER_LIFECYCLE_HOOKS=true  # Ensure containers restart properly after an update
-      - WATCHTOWER_LABEL_ENABLE=true  # Only update containers with the `com.centurylinklabs.watchtower.enable=true` label
+      - WATCHTOWER_POLL_INTERVAL=300
+      - WATCHTOWER_LIFECYCLE_HOOKS=true
+      - WATCHTOWER_LABEL_ENABLE=true
+    networks:
+      - mockba-apolo-net
 
-  redis:
+  redis-apolo:
     image: redis:latest
-    container_name: redis-mockba-binance
+    container_name: redis-mockba-apolo
     restart: always
     ports:
-      - "6392:6380"  # Expose Redis on external port 6392
+      - "6392:6379"
     volumes:
-      - redis_data:/data  # Optional: Persist Redis data across restarts
+      - redis_apolo_data:/data
+    networks:
+      - mockba-apolo-net
 
 volumes:
-  redis_data:  # Define the volume for Redis data persistence        
+  redis_apolo_data:
+
+networks:
+  mockba-apolo-net:
+    driver: bridge
