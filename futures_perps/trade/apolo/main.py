@@ -205,6 +205,9 @@ def analyze_with_llm(signal_dict: dict) -> dict:
 
     prompt = intro + analysis_logic + risk_context + response_format
 
+    # Debug the prompt
+    logger.debug(f"LLM Prompt:\n{prompt}\n--- End of Prompt ---")
+
     # --- Send to DeepSeek ---
     response = requests.post(
         "https://api.deepseek.com/v1/chat/completions",
@@ -289,7 +292,7 @@ def process_signal():
             stored_id = redis_client.get("latest_signal_id")
             
             if stored_id and current_id == stored_id.decode('utf-8'):
-                logger.info(f"Signal {current_id} already processed. Skipping.")
+                # logger.info(f"Signal {current_id} already processed. Skipping.")
                 time.sleep(30)
                 continue
             elif current_id:
