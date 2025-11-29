@@ -140,7 +140,11 @@ def analyze_with_llm(signal_dict: dict) -> dict:
     orderbook = get_orderbook(signal_dict['asset'], limit=20)
     orderbook_content = format_orderbook_as_text(orderbook)  # ← See helper below
 
-    balance = get_available_balance(ORDERLY_SECRET, ORDERLY_ACCOUNT_ID, ORDERLY_PUBLIC_KEY) 
+    orderly_account_id = ORDERLY_ACCOUNT_ID
+    orderly_secret     = ORDERLY_SECRET
+    orderly_public_key = ORDERLY_PUBLIC_KEY
+
+    balance = get_available_balance(orderly_secret, orderly_account_id, orderly_public_key) 
 
     # --- Rest of your prompt logic (unchanged) ---
     intro = (
@@ -192,7 +196,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
         f"\n--- PARÁMETROS DE RIESGO ACTUALES (OBLIGATORIOS) ---\n"
         f"- Máximo apalancamiento permitido: {leverage}x\n"
         f"- Riesgo por operación: {RISK_PER_TRADE_PCT}% del balance\n"
-        f"- Balance estimado: ~${balance():.2f} (para cálculos)\n"
+        f"- Balance estimado: ~${balance:.2f} (para cálculos)\n"
         f"- Ratio riesgo:beneficio obligatorio: 1:3\n"
         f"- Stop loss debe estar más allá del último swing válido\n"
         f"- Si el apalancamiento necesario supera {leverage}x, RECHAZA la señal\n"
@@ -387,7 +391,7 @@ def process_signal():
 
 
 if __name__ == "__main__":
-    # # Check for tables
+    # Check for tables
     initialize_database_tables()
 
     # # Start signal processing
