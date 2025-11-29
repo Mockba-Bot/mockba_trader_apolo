@@ -35,7 +35,7 @@ services:
     container_name: redis-mockba-apolo
     restart: always
     ports:
-      - "6392:6379"
+      - "6393:6379"
     volumes:
       - redis_apolo_data:/data
     networks:
