@@ -33,7 +33,9 @@ else:
 
 
 # Import your executor
-from trading_bot.futures_executor_apolo import place_futures_order, get_user_statistics
+from trading_bot.futures_executor_apolo import place_futures_order, get_user_statistics, get_available_balance, ORDERLY_ACCOUNT_ID, ORDERLY_SECRET, ORDERLY_PUBLIC_KEY
+
+from trading_bot.send_bot_message import send_bot_message
 
 # Import your liquidity persistence monitor
 import liquidity_persistence_monitor as lpm
@@ -182,6 +184,13 @@ def analyze_with_llm(signal_dict: dict) -> dict:
         "- leverage: int (use: " + str(leverage) + ")\n"
         "\nDo NOT include any other text, explanation, or markdown. Only pure JSON."
     )
+
+    orderly_account_id = ORDERLY_ACCOUNT_ID
+    orderly_secret     = ORDERLY_SECRET
+    orderly_public_key = ORDERLY_PUBLIC_KEY
+
+
+    balance = get_available_balance(orderly_secret, orderly_account_id, orderly_public_key)
 
     # Inject real risk rules as a SYSTEM-like instruction
     risk_context = (
@@ -336,10 +345,13 @@ def process_signal():
                 logger.info(f"✅ {signal['asset']} passed CEX consensus: {cex_check['reason']}")
             
             # Analyze with LLM
+            logger.info(f"Analyzing signal for {signal['asset']} with LLM...")
             llm_result = analyze_with_llm(signal)
             print(llm_result["approved"])
             if not bool(llm_result["approved"]):
                 logger.info(f"LLM rejected signal for {signal['asset']}: {llm_result['analysis'][:200]}...")
+                message = f"LLM rejected signal for {signal['asset']}:\n{llm_result['analysis']}"
+                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), message)
                 time.sleep(30)
                 continue
             
