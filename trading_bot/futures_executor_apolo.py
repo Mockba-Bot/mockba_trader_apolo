@@ -303,6 +303,9 @@ def place_futures_order(signal: dict):
     # -------- Safety floors --------
     MIN_TP = 0.008      # 0.8%
 
+    symbol = signal['symbol']
+    side = signal['side'].upper()
+
     asset_info = get_futures_exchange_info(symbol)
     if not asset_info:
         logger.error(f"❌ Failed to fetch asset info for {symbol}")
@@ -316,8 +319,6 @@ def place_futures_order(signal: dict):
         logger.error(f"❌ Invalid tick sizes for {symbol}: quote_tick={quote_tick}, base_tick={base_tick}")
         return
 
-    symbol = signal['symbol']
-    side = signal['side'].upper()
     tp_price = round(float(signal['take_profit']), quote_tick)
     sl_price = round(float(signal['stop_loss']), quote_tick)
 
