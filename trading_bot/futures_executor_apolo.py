@@ -288,20 +288,8 @@ rate_limiter = RateLimiter(max_calls=10, period=1)
 def place_futures_order(signal: dict):
     """
     Creates and submits a BRACKET order with TAKE_PROFIT and STOP_LOSS child orders.
-
-    Args:
-        symbol (str)
-        leverage (float): desired leverage (will be floored to 2x)
-        side (int or str): 1 (long/BUY) or -1 (short/SELL) or "BUY"/"SELL"
-        tp_trigger_percentage (float): as a DECIMAL (e.g., 0.006 = 0.6%)
-        sl_trigger_percentage (float): as a DECIMAL (e.g., 0.008 = 0.8%)
-        interval (str)
-        meta_features (dict)
     """
     rate_limiter()  # ✅ global rate limit
-
-    # -------- Safety floors --------
-    MIN_TP = 0.008      # 0.8%
 
     symbol = signal['symbol']
     side = signal['side'].upper()
@@ -319,33 +307,32 @@ def place_futures_order(signal: dict):
         logger.error(f"❌ Invalid tick sizes for {symbol}: quote_tick={quote_tick}, base_tick={base_tick}")
         return
 
-    tp_price = round(float(signal['take_profit']), quote_tick)
-    sl_price = round(float(signal['stop_loss']), quote_tick)
+    # FIX: Calculate decimal precision from tick size
+    def get_precision_from_tick(tick_size: float) -> int:
+        """Convert tick size to decimal precision for rounding"""
+        if tick_size <= 0:
+            return 2
+        tick_str = f"{tick_size:.10f}"
+        if '.' in tick_str:
+            # Count decimal places, ignoring trailing zeros
+            return len(tick_str.split('.')[1].rstrip('0'))
+        return 0
+
+    quote_precision = get_precision_from_tick(quote_tick)
+    base_precision = get_precision_from_tick(base_tick)
+
+    # FIX: Use proper precision for rounding
+    tp_price = round(float(signal['take_profit']), quote_precision)
+    sl_price = round(float(signal['stop_loss']), quote_precision)
 
     leverage = signal.get('leverage')
     if leverage is None or leverage <= 0:
         logger.error(f"Invalid leverage in signal: {leverage}")
         return None
 
-    # ✅ Floor TP so fees don’t eat PnL
-    if tp_trigger_percentage < MIN_TP:
-        logger.info(f"⏭️ TP {tp_trigger_percentage:.4f} < 0.8% floor. Clamping to {MIN_TP:.4f}.")
-        tp_trigger_percentage = MIN_TP
-
-    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
-
-
-    # Helpers that respect ticks
-    def nudge_up(px):   # ensures '>' current price
-        return round_up_to_tick(px + quote_tick, quote_tick)
-    def nudge_down(px): # ensures '<' current price
-        return round_down_to_tick(px - quote_tick, quote_tick)
-
-
     orderly_account_id = ORDERLY_ACCOUNT_ID
     orderly_secret     = ORDERLY_SECRET
     orderly_public_key = ORDERLY_PUBLIC_KEY
-
 
     balance = get_available_balance(orderly_secret, orderly_account_id, orderly_public_key)
     if balance is None or balance < 5.0:
@@ -357,26 +344,32 @@ def place_futures_order(signal: dict):
         raw_key = raw_key[:32]
     private_key = Ed25519PrivateKey.from_private_bytes(raw_key)
 
-    # --- Current price (use your usual method) ---
+    # --- Current price ---
     live_price = float(get_close_price(orderly_account_id, symbol))
     if live_price <= 0:
         logger.error(f"❌ Invalid live price for {symbol}: {live_price}")
 
     # --- Normalize side ---
     if isinstance(side, int):
-        signal = int(side)
-        side_str = "BUY" if signal == 1 else "SELL"
+        signal_val = int(side)
+        side_str = "BUY" if signal_val == 1 else "SELL"
     else:
         side_str = side.upper()
-        signal = 1 if side_str == "BUY" else -1
+        signal_val = 1 if side_str == "BUY" else -1
 
-    # --- Compute TP/SL triggers (percentages are DECIMALS; DO NOT divide by 100) ---
-    if signal == 1:
+    # FIX: Use tick-based rounding functions
+    def nudge_up(px):   # ensures '>' current price
+        return round_up_to_tick(px + quote_tick, quote_tick)
+    def nudge_down(px): # ensures '<' current price
+        return round_down_to_tick(px - quote_tick, quote_tick)
+
+    # --- Compute TP/SL triggers ---
+    if signal_val == 1:
         # LONG entry (BUY). Exit side is SELL.
         opposite_side = "SELL"
         sl_trigger = sl_price
         tp_trigger = tp_price
-        # exchange strict inequalities:
+        # ensure strict inequalities:
         if sl_trigger >= live_price:
             sl_trigger = nudge_down(live_price)
         if tp_trigger <= live_price:
@@ -386,31 +379,30 @@ def place_futures_order(signal: dict):
         opposite_side = "BUY"
         sl_trigger = sl_price
         tp_trigger = tp_price
-        # exchange strict inequalities:
+        # ensure strict inequalities:
         if sl_trigger <= live_price:
             sl_trigger = nudge_up(live_price)
         if tp_trigger >= live_price:
             tp_trigger = nudge_down(live_price)
 
-    # --- Notional / qty ---
-
-    notional = balance * leverage
-    qty = (notional / live_price)
-
+    # --- Position sizing ---
     qty = calculate_position_size_with_margin_cap(signal, balance, leverage, asset_info)
     if qty <= 0:
         logger.warning(f"Position size calculation failed for {symbol}")
         return None
+
+    # FIX: Use proper precision for quantity rounding
+    qty = round(qty, base_precision)
 
     # FIRST: Check if the raw quantity would meet minimum notional
     raw_notional = live_price * qty
     if raw_notional < min_notional:
         # Calculate the minimum quantity needed to meet min_notional
         min_qty = min_notional / live_price
-        qty = min_qty
+        qty = round(min_qty, base_precision)
         logger.info(f"🔄 Adjusted quantity to meet minimum notional: {qty:.6f}")
 
-    # THEN: Round to the base tick (but ensure it doesn't round to 0)
+    # THEN: Round to the base tick
     qty = round_down_to_tick(qty, base_tick)
 
     # FINAL: Check if the rounded quantity still meets minimum
@@ -419,7 +411,6 @@ def place_futures_order(signal: dict):
         # If rounding made it too small, round UP instead
         qty = round_up_to_tick(qty, base_tick)
         order_notional = live_price * qty
-
         logger.info(f"🔄 Rounded up to meet minimum: qty={qty:.6f}, notional={order_notional:.2f}")
 
     # Final safety check
@@ -428,6 +419,7 @@ def place_futures_order(signal: dict):
             f"❌ Cannot meet minimum notional after adjustments (need ≥ {min_notional}, got {order_notional:.2f}). "
             f"(price={live_price:.6f}, qty={qty}, lev={leverage}, balance={balance})"
         )
+        return None
 
     payload = {
         "symbol": symbol,
