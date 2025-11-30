@@ -93,32 +93,47 @@ def get_confidence_level(confidence: float) -> str:
     else:
         return "⚠️ WEAK"
 
-def get_close_price(wallet_address: str, symbol: str = "PERP_NEAR_USDC"):
-    url = f"wss://ws-evm.orderly.org/ws/stream/{wallet_address}"
-    topic = f"{symbol}@ticker"
+def get_close_price(wallet_address: str, symbol: str = "PERP_NEAR_USDC") -> float:
+    """Get current price from Orderly WebSocket - simplified version"""
+    import asyncio
+    
+    async def get_price():
+        url = f"wss://ws-evm.orderly.org/ws/stream/{wallet_address}"
+        topic = f"{symbol}@ticker"
+        
+        try:
+            # Use async context manager
+            async with websockets.connect(url, ping_interval=15) as ws:
+                # Subscribe to ticker topic
+                await ws.send(json.dumps({
+                    "id": "clientID_price",
+                    "topic": topic,
+                    "event": "subscribe"
+                }))
 
+                # Wait for response with timeout
+                for _ in range(10):  # Try up to 10 messages
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=5.0)
+                        msg = json.loads(raw)
+
+                        if msg.get("topic") == topic and "data" in msg:
+                            close_price = msg["data"].get("close")
+                            if close_price is not None:
+                                return float(close_price)
+                    except asyncio.TimeoutError:
+                        break
+                       
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}")
+        
+        return None
+
+    # Run the async function
     try:
-        with websockets.connect(url, ping_interval=15) as ws:
-            # Subscribe to ticker topic
-                ws.send(json.dumps({
-                "id": "clientID4",
-                "topic": topic,
-                "event": "subscribe"
-            }))
-
-            # print(f"📡 Subscribed to {topic}. Waiting for ticker data...")
-
-        while True:
-            raw = ws.recv()
-            msg = json.loads(raw)
-
-            if msg.get("topic") == topic and "data" in msg:
-                close_price = msg["data"].get("close")
-                # print(f"✅ Close price for {symbol}: {close_price}")
-                return close_price  # or process/send elsewhere
-
+        return asyncio.run(get_price())
     except Exception as e:
-        print(f"❌ Error: {e}")
+        logger.error(f"Async execution error: {e}")
         return None
     
 def get_futures_exchange_info(symbol: str):
@@ -556,5 +571,5 @@ def get_user_statistics():
         return 0
 
 # if __name__ == "__main__":
-#     asset_info = get_user_statistics()
-#     print(asset_info)    
+#     price = get_close_price(ORDERLY_ACCOUNT_ID, "PERP_BTC_USDC")
+#     print(f"Close price: {price}")  
