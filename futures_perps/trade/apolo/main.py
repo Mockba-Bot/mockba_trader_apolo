@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
 
 from db.db_ops import  initialize_database_tables, get_bot_status
 from logs.log_config import apolo_trader_logger as logger
-from historical_data import get_historical_data_limit_apolo, get_orderbook
+from historical_data import get_historical_data_limit_apolo, get_orderbook, get_funding_rate_history, get_public_liquidations
 
 # Load environment variables
 from dotenv import load_dotenv
@@ -146,6 +146,52 @@ def analyze_with_llm(signal_dict: dict) -> dict:
 
     balance = get_available_balance(orderly_secret, orderly_account_id, orderly_public_key) 
 
+    # Get funding history (your actual data shows array of dicts)
+    funding_data = get_funding_rate_history(symbol=signal_dict['asset'], limit=50)
+    
+    # Calculate meaningful funding metrics
+    if funding_data and isinstance(funding_data, list):
+        funding_rates = [item.get('funding_rate', 0) for item in funding_data]
+        current_funding = funding_rates[0] if funding_rates else 0
+        avg_funding = sum(funding_rates) / len(funding_rates)
+        max_funding = max(funding_rates)
+        min_funding = min(funding_rates)
+        
+        funding_trend = "POSITIVE" if current_funding > avg_funding else "NEGATIVE"
+        funding_extreme = abs(current_funding) > 0.0005  # 0.05%
+    else:
+        current_funding = 0
+        funding_trend = "UNKNOWN"
+        funding_extreme = False
+
+    # Analyze liquidation clusters (your actual data)
+    liquidation_data = get_public_liquidations(symbol=signal_dict['asset'], lookback_hours=24)
+    
+    if liquidation_data and isinstance(liquidation_data, list):
+        total_liquidations = len(liquidation_data)
+        
+        # Extract liquidation prices and sizes
+        liquidation_prices = []
+        liquidation_sizes = []
+        
+        for liquidation in liquidation_data:
+            for position in liquidation.get('positions_by_perp', []):
+                if position.get('symbol') == signal_dict['asset']:
+                    mark_price = position.get('mark_price', 0)
+                    position_qty = abs(position.get('position_qty', 0))
+                    liquidation_prices.append(mark_price)
+                    liquidation_sizes.append(position_qty)
+        
+        # Find liquidation clusters near current price
+        current_price = latest_close_price
+        price_range = current_price * 0.02  # 2% range
+        nearby_liquidations = sum(1 for price in liquidation_prices 
+                                if abs(price - current_price) <= price_range)
+        
+    else:
+        total_liquidations = 0
+        nearby_liquidations = 0
+
     # --- Rest of your prompt logic (unchanged) ---
     intro = (
         "Eres un trader discrecional de elite en futuros de cripto con más de 10 años de experiencia.  \n"
@@ -166,6 +212,29 @@ def analyze_with_llm(signal_dict: dict) -> dict:
             
 
     analysis_logic = load_prompt_template()
+
+    # Enhanced funding context with actual data
+    funding_context = (
+        "ANÁLISIS DE TASA DE FINANCIAMIENTO (datos reales):\n"
+        f"• Tasa actual: {current_funding:.6f} ({current_funding*10000:.2f} bps)\n"
+        f"• Tendencia: {funding_trend}\n"
+        f"• Es extremo: {'SÍ' if funding_extreme else 'NO'}\n"
+        "Interpretación:\n"
+        "- Funding >0: Largos pagan → posible presión bajista\n"
+        "- Funding <0: Cortos pagan → posible presión alcista\n"
+        "- |Funding|>0.05%: Señal contraria fuerte\n"
+    )
+
+    # Enhanced liquidation context
+    liquidation_context = (
+        "CLUSTERS DE LIQUIDACIÓN (datos reales):\n"
+        f"• Total 24h: {total_liquidations} liquidaciones\n"
+        f"• Cerca del precio actual: {nearby_liquidations}\n"
+        "Implicaciones:\n"
+        "- Múltiples liquidaciones cerca: zona de alta volatilidad\n"
+        "- Smart money puede cazar stops en estos niveles\n"
+        "- Considerar colocar SL fuera de clusters de liquidación\n"
+    )
 
     # Ensure LLM knows how to set price levels — even if user prompt is vague
     fallback_price_instructions = (
@@ -191,19 +260,25 @@ def analyze_with_llm(signal_dict: dict) -> dict:
         "\nDo NOT include any other text, explanation, or markdown. Only pure JSON."
     )
 
-    # Inject real risk rules as a SYSTEM-like instruction
+    # Enhanced risk context with liquidation awareness
     risk_context = (
-        f"\n--- PARÁMETROS DE RIESGO ACTUALES (OBLIGATORIOS) ---\n"
-        f"- Máximo apalancamiento permitido: {leverage}x\n"
-        f"- Riesgo por operación: {RISK_PER_TRADE_PCT}% del balance\n"
-        f"- Balance estimado: ~${balance:.2f} (para cálculos)\n"
-        f"- Ratio riesgo:beneficio obligatorio: 1:3\n"
-        f"- Stop loss debe estar más allá del último swing válido\n"
-        f"- Si el apalancamiento necesario supera {leverage}x, RECHAZA la señal\n"
-        f"- Si no puedes calcular niveles válidos, responde: NO EJECUTAR\n"
+        f"\n--- PARÁMETROS DE RIESGO CON DATOS REALES ---\n"
+        f"• Apalancamiento: {leverage}x\n"
+        f"• Riesgo/operación: {RISK_PER_TRADE_PCT}% (${balance*RISK_PER_TRADE_PCT/100:.2f})\n"
+        f"• Ratio R:B: 1:3 obligatorio\n"
+        f"• Funding actual: {current_funding:.6f} → {'ALCISTA' if current_funding < -0.0001 else 'BAJISTA' if current_funding > 0.0001 else 'NEUTRO'}\n"
+        f"• Liquidaciones cercanas: {nearby_liquidations} → {'ALTA VOLATILIDAD' if nearby_liquidations > 5 else 'VOLATILIDAD MODERADA'}\n"
     )
 
-    prompt = intro + analysis_logic + risk_context + response_format
+    additional_market_context = (
+        "\n\nCONTEXTO ADICIONAL DEL MERCADO A CONSIDERAR:\n"
+        "- Analiza los extremos de funding rate para oportunidades de trading contrario\n"
+        "- Identifica clusters de liquidación que pueden causar movimientos violentos\n"
+        "- Combina la profundidad del orderbook con niveles de liquidación para S/R clave\n"
+        "- Usa las tendencias de funding para medir la saturación de sentimiento del mercado\n"
+    )
+
+    prompt = intro + analysis_logic + risk_context + additional_market_context + response_format
 
     # Debug the prompt
     logger.debug(f"LLM Prompt:\n{prompt}\n--- End of Prompt ---")
@@ -217,7 +292,9 @@ def analyze_with_llm(signal_dict: dict) -> dict:
             "messages": [
                 {"role": "user", "content": prompt},
                 {"role": "user", "content": f"Candles (CSV format):\n{csv_content}"},
-                {"role": "user", "content": f"Orderbook:\n{orderbook_content}"}
+                {"role": "user", "content": f"Orderbook:\n{orderbook_content}"},
+                {"role": "user", "content": funding_context},
+                {"role": "user", "content": liquidation_context}
             ],
             "temperature": 0.0,
             "max_tokens": 500

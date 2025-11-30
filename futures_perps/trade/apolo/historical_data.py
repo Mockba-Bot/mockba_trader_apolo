@@ -403,7 +403,38 @@ def get_orderbook(symbol: str, limit: int = 5) -> Dict[str, List[List[str]]]:
 
     except Exception:
         return {"bids": [], "asks": []}
-    
+
+def get_funding_rate_history(symbol: str, limit: int = 1000):
+    rate_limiter()
+    url = f"{BASE_URL}/v1/public/funding_rate_history"
+    r = requests.get(url, params={"symbol": symbol, "limit": limit}, timeout=10)
+    r.raise_for_status()
+    payload = r.json()
+    data = payload.get("data", [])
+    # Some endpoints use {'data': {'rows': [...]}}
+    if isinstance(data, dict) and "rows" in data:
+        return data["rows"]
+    return data if isinstance(data, list) else []    
+
+def get_public_liquidations(symbol: str = None, lookback_hours: int = 24):
+    """
+    Liquidations in a time window. Many APIs require start_t/end_t in ms.
+    """
+    rate_limiter()
+    end_ms = int(time.time() * 1000)
+    start_ms = end_ms - int(lookback_hours * 3600 * 1000)
+    params = {"start_t": start_ms, "end_t": end_ms}
+    if symbol:
+        params["symbol"] = symbol
+    url = f"{BASE_URL}/v1/public/liquidated_positions"
+    r = requests.get(url, params=params, timeout=10)
+    r.raise_for_status()
+    data = r.json().get("data")
+    if isinstance(data, dict):
+        # expected shape: {'rows': [...], 'meta': {...}}
+        return data.get("rows", [])
+    return data or []
+
 
 # if __name__ == "__main__":
 #   # data = fetch_historical_orderly("PERP_BTC_USDC", "30m", limit=80)
@@ -411,3 +442,7 @@ def get_orderbook(symbol: str, limit: int = 5) -> Dict[str, List[List[str]]]:
 #   #print(current_price)
 #   orderbook = get_orderbook("PERP_BTC_USDC", limit=5)
 #   print(orderbook)
+    # data = get_funding_rate_history("PERP_BTC_USDC", limit=50)
+    # # print(data)
+    # data =  get_public_liquidations("PERP_BTC_USDC", lookback_hours=24)
+    # print(data)
