@@ -404,6 +404,11 @@ def process_signal():
             # Must have positive expectancy and enough trades
             if bt.get("trades", 0) < 15 or bt.get("exp", 0.0) <= MICRO_BACKTEST_MIN_EXPECTANCY:
                 logger.info(f"❌ {signal['asset']} micro-backtest failed: {bt}")
+                # Message to indicate why th ebacktest failed
+                message = f"❌ {signal['asset']} micro-backtest failed:\n"
+                message += f"- Trades: {bt.get('trades', 0)} (min 15)\n"
+                message += f"- Expectancy: {bt.get('exp', 0.0):.4f} (min {MICRO_BACKTEST_MIN_EXPECTANCY})\n"
+                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), message)
                 time.sleep(30)
                 continue
             
@@ -414,10 +419,12 @@ def process_signal():
             cex_check = lpm.validate_cex_consensus_for_dex_asset(signal['asset'])
             if cex_check["consensus"] == "NO_CEX_PAIR":
                 logger.info(f"🛑 {signal['asset']} CEX consensus check failed: {cex_check['reason']}")
+                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), f"🛑 {signal['asset']} CEX consensus check failed: {cex_check['reason']}")
                 time.sleep(30)
                 continue
             elif cex_check["consensus"] == "LOW":
                 logger.info(f"❌ Skipping {signal['asset']}: LOW CEX consensus ({cex_check['reason']})")
+                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), f"❌ Skipping {signal['asset']}: LOW CEX consensus ({cex_check['reason']})")
                 time.sleep(30)
                 continue
             else:
