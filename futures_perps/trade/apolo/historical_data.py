@@ -358,6 +358,17 @@ def get_historical_data_limit_apolo(symbol, interval, limit):
         # ✅ SORT CHRONOLOGICALLY (OLDEST → NEWEST)
         df = df.reset_index(drop=True).sort_values('start_timestamp').reset_index(drop=True)
 
+        features_dict = get_features_for_strategy(interval, "Hybrid")
+        features = features_dict["features"]
+        
+        if not features:
+            print(f"⚠️ Warning: No features defined for interval: {interval} and strategy: Hybrid")
+            raise ValueError(f"No features defined for interval: {interval} and strategy: Hybrid")
+        
+        df = add_indicators(df, features)
+
+        
+
         return df
     return None
 
