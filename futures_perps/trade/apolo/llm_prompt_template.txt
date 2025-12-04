@@ -1,29 +1,6 @@
-### TAREAS DE ANÁLISIS (Respuesta ESTRICTA)
-
-1. **CONFIRMACIÓN DE VELAS**  
-   - ¿La acción del precio (últimas 3–5 velas) apoya la señal?  
-   - ¿Hay signos de rechazo, ruptura falsa o agotamiento en la dirección de la señal?  
-   - ¿Está la señal alineada con soporte/resistencia clave?
-
-2. **LIQUIDEZ DEL LIBRO DE ÓRDENES**  
-   - ¿Hay desequilibrio bid/ask en la dirección de la señal dentro del 0.3% del precio?  
-   - ¿Hay grandes muros de liquidez *contra* la señal que sugieran caza de stops?
-
-3. **EVALUACIÓN DE RIESGO**  
-   - ¿Es ALTO el riesgo de caza de stops?  
-   - ¿RSI >70 o <30? → si sí, esperar reversión  
-   - ¿La señal tiene más de 2 horas? → si sí, rechazar a menos que haya retest
-
-4. **ENTRADA Y GESTIÓN (SOLO SI TODO PASA)**  
-   - **Stop Loss**: más allá del swing reciente  
-   - **Take Profit**: exactamente 3x la distancia del SL (ratio 1:3)  
-   - **NO uses apalancamiento mayor al permitido** (ver reglas abajo)
-
-### 🚫 REGLAS DE RECHAZO DURO (Responder "NO EJECUTAR" si CUALQUIERA aplica)
-- Señal contradicha por velas recientes  
-- Libro muestra 2x+ liquidez en dirección opuesta dentro del 0.5%  
-- Patrón claro de caza de stops  
-- RSI ≥75 o ≤25 con divergencia  
-- Señal antigua (>2h) y precio movido >0.8%  
-- Backtest: winrate < 70% o expectativa < 0.0040  
-- Apalancamiento requerido excede el máximo permitido
+Analiza este dataset de trading.
+Incluye: precio, volumen, EMA, ATR, bandas de Bollinger, RSI_14, MACD, VWAP y snapshot del order book. 
+El modelo de ML sugiere posición SHORT con 100% de confianza. 
+Score de liquidez: 12.03 (🟡 Buena), Volumen 1h: $11,874, Volatilidad 1h: 3.35% (🔴 Muy alta). El precio actual es $0.386400. 
+Basado en estos datos, ¿debería tomar la señal sugerida? ¿Ves patrones técnicos que confirmen? 
+¿Niveles clave de soporte/resistencia? ¿El order book muestra liquidez suficiente? 
