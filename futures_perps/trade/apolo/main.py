@@ -288,7 +288,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
         "https://api.deepseek.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {os.getenv('DEEP_SEEK_API_KEY')}"},
         json={
-            "model": "deepseek-chat",
+            "model": "deepseek-reasoner",
             "messages": [
                 {"role": "user", "content": prompt},
                 {"role": "user", "content": f"Candles (CSV format):\n{csv_content}"},
@@ -299,6 +299,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
             "temperature": 0.0,
             "max_tokens": 500
         }
+        timeout=45
     )
     
     if response.status_code == 200:
