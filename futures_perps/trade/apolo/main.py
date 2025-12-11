@@ -130,7 +130,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
     df = get_historical_data_limit_apolo(
         symbol=signal_dict['asset'],
         interval=signal_dict['interval'],
-        limit=80
+        limit=30
     )
     csv_content = df.to_csv(index=False)  # ← Preserves all columns automatically
     # get the latest close price from the dataframe
@@ -285,7 +285,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
 
     # --- Send to DeepSeek ---
     response = requests.post(
-        "https://api.deepseek.com/v1/chat/completions",
+        "https://api.deepseek.com",
         headers={"Authorization": f"Bearer {os.getenv('DEEP_SEEK_API_KEY')}"},
         json={
             "model": "deepseek-reasoner",
@@ -298,7 +298,7 @@ def analyze_with_llm(signal_dict: dict) -> dict:
             ],
             "temperature": 0.0,
             "max_tokens": 500
-        }
+        },
         timeout=45
     )
     
