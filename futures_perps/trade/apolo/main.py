@@ -408,7 +408,7 @@ def process_signal():
                 message = f"❌ {signal['asset']} micro-backtest failed:\n"
                 message += f"- Trades: {bt.get('trades', 0)} (min 15)\n"
                 message += f"- Expectancy: {bt.get('exp', 0.0):.4f} (min {MICRO_BACKTEST_MIN_EXPECTANCY})\n"
-                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), message)
+                # send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), message)
                 time.sleep(30)
                 continue
             
@@ -419,12 +419,12 @@ def process_signal():
             cex_check = lpm.validate_cex_consensus_for_dex_asset(signal['asset'])
             if cex_check["consensus"] == "NO_CEX_PAIR":
                 logger.info(f"🛑 {signal['asset']} CEX consensus check failed: {cex_check['reason']}")
-                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), f"🛑 {signal['asset']} CEX consensus check failed: {cex_check['reason']}")
+                # send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), f"🛑 {signal['asset']} CEX consensus check failed: {cex_check['reason']}")
                 time.sleep(30)
                 continue
             elif cex_check["consensus"] == "LOW":
                 logger.info(f"❌ Skipping {signal['asset']}: LOW CEX consensus ({cex_check['reason']})")
-                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), f"❌ Skipping {signal['asset']}: LOW CEX consensus ({cex_check['reason']})")
+                # send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), f"❌ Skipping {signal['asset']}: LOW CEX consensus ({cex_check['reason']})")
                 time.sleep(30)
                 continue
             else:
@@ -436,8 +436,8 @@ def process_signal():
             print(llm_result["approved"])
             if not bool(llm_result["approved"]):
                 logger.info(f"LLM rejected signal for {signal['asset']}: {llm_result['analysis'][:200]}...")
-                message = f"LLM rejected signal for {signal['asset']}:\n{llm_result['analysis']}"
-                send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), message)
+                # message = f"LLM rejected signal for {signal['asset']}:\n{llm_result['analysis']}"
+                # send_bot_message(int(os.getenv("TELEGRAM_CHAT_ID")), message)
                 time.sleep(30)
                 continue
             
