@@ -73,7 +73,7 @@ else:
     redis_client = None
 
 # Risk parameters - SAFER VALUES
-RISK_PER_TRADE_PCT = float(os.getenv("RISK_PER_TRADE_PCT", "0.3"))  # Reduced to 0.3%
+RISK_PER_TRADE_PCT = float(os.getenv("RISK_PER_TRADE_PCT", "1.5"))  # Reduced to 0.3%
 
 # Helpers
 def round_down_to_tick(value: float, tick: float) -> float:
