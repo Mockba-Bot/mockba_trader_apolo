@@ -236,66 +236,86 @@ def calculate_position_size_with_margin_cap(
     signal: dict,
     available_balance: float,
     leverage: int,
-    asset_info: dict  # renamed from symbol_info for clarity
+    asset_info: dict
 ) -> float:
     """
-    Calculate position size with margin cap using asset_info fields:
-    - base_tick → step size
-    - min_notional → minimum trade notional
-    - base_imr → implied max leverage = 1 / base_imr
+    Calculate position size based primarily on risk, capped only by actual margin limits.
+    
+    asset_info fields expected:
+      - base_tick: step size for quantity
+      - base_min: minimum order quantity
+      - min_notional: minimum trade value (in quote, e.g., USDT)
+      - quote_max: maximum trade value (optional, but used if present)
+      - base_imr: initial margin requirement (e.g., 0.05 = 20x max leverage)
     """
     entry = float(signal['entry'])
     sl = float(signal['stop_loss'])
-    # side = signal['side'].upper()
 
-    # Validate leverage against asset's IMR
-    max_allowed_leverage = int(1 / asset_info['base_imr']) if asset_info['base_imr'] > 0 else 1
+    if entry <= 0 or sl <= 0:
+        logger.warning("Invalid entry or stop loss price (<= 0)")
+        return 0.0
+
+    # 1. Validate and cap leverage based on asset IMR
+    if asset_info['base_imr'] <= 0:
+        logger.error("Invalid base_imr (<= 0), cannot determine max leverage")
+        return 0.0
+
+    max_allowed_leverage = int(1 / asset_info['base_imr'])
     if leverage > max_allowed_leverage:
         logger.warning(f"Leverage {leverage}x exceeds max allowed {max_allowed_leverage}x. Capping.")
         leverage = max_allowed_leverage
 
+    # 2. Compute risk-based position size (primary control)
     risk_amount = available_balance * (RISK_PER_TRADE_PCT / 100)
     risk_per_unit = abs(entry - sl)
 
-    if risk_per_unit <= 0:
-        logger.warning("Invalid stop loss placement")
-        return 0.0
-
     if risk_per_unit < 1e-10:
-        logger.warning("Risk per unit too small, skipping trade")
+        logger.warning("Stop loss too close to entry (risk_per_unit ≈ 0)")
         return 0.0
 
     qty_by_risk = risk_amount / risk_per_unit
 
-    # Margin cap: use only a portion of available buying power (50% for safety)
-    max_notional = available_balance * leverage * 0.5
-    if entry <= 0:
-        logger.warning("Invalid entry price")
-        return 0.0
-    qty_by_margin = max_notional / entry
+    # 3. Compute MAXIMUM affordable notional (hard limit based on margin)
+    # Use 95% of full margin to leave room for fees, slippage, and mark price drift
+    max_affordable_notional = available_balance * leverage * 0.95
+    qty_by_margin = max_affordable_notional / entry
 
+    # 4. Final quantity: risk-based, but never exceed margin capacity
     qty = min(qty_by_risk, qty_by_margin)
 
-    # Round to base_tick (step size)
+    # 5. Round to exchange step size
     step_size = asset_info['base_tick']
     qty = round_step_size(qty, step_size)
 
-    # Enforce min base quantity
+    # 6. Validate against exchange rules
     if qty < asset_info['base_min']:
-        logger.warning(f"Qty {qty} below min base quantity {asset_info['base_min']}")
+        logger.warning(
+            f"Qty {qty:.8f} below min base quantity {asset_info['base_min']} for {signal['symbol']}"
+        )
         return 0.0
 
-    # Enforce min notional value
     notional = qty * entry
+
     if notional < asset_info['min_notional']:
-        logger.warning(f"Notional ${notional:.2f} below min ${asset_info['min_notional']}")
+        logger.warning(
+            f"Notional ${notional:.2f} below min ${asset_info['min_notional']} for {signal['symbol']}"
+        )
         return 0.0
 
-    # Optional: enforce max notional (quote_max)
-    if notional > asset_info['quote_max']:
-        logger.warning(f"Notional ${notional:.2f} exceeds max ${asset_info['quote_max']}")
-        # Optionally cap or reject
+    if notional > asset_info.get('quote_max', float('inf')):
+        logger.warning(
+            f"Notional ${notional:.2f} exceeds max ${asset_info['quote_max']} for {signal['symbol']}"
+        )
         return 0.0
+
+    # Optional: log sizing rationale
+    if qty == qty_by_risk:
+        logger.info(f"Position sized by risk: {qty:.6f} ({notional:.2f} USDT)")
+    else:
+        logger.info(
+            f"Position capped by margin: risk wanted {qty_by_risk:.6f}, got {qty:.6f} "
+            f"({notional:.2f} USDT) due to {leverage}x leverage"
+        )
 
     return qty
 
